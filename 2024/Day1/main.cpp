@@ -3,118 +3,139 @@
 #include <string>
 #include <fstream>
 #include <algorithm>
-#include <map>
+#include <unordered_map>
+#include <stdexcept>
+#include <filesystem>
+#include <utility>
+#include <numeric>
 
-using namespace std;
-
-void readInput(const string &filename, vector<int> &left, vector<int> &right)
+struct InputData
 {
-    ifstream file(filename);
+    std::vector<int> left_column;
+    std::vector<int> right_column;
+
+    [[nodiscard]] size_t size() const noexcept { return left_column.size(); }
+    [[nodiscard]] bool empty() const noexcept { return left_column.empty(); }
+};
+
+[[nodiscard]] InputData read_input(const std::filesystem::path &file_path)
+{
+    if (!std::filesystem::exists(file_path))
+    {
+        throw std::runtime_error("File does not exist: " + file_path.string());
+    }
+
+    std::ifstream file(file_path);
     if (!file.is_open())
     {
-        cerr << "Nie można otworzyć pliku: " << filename << endl;
-        return;
+        throw std::runtime_error("Cannot open file: " + file_path.string());
     }
 
-    int leftNum, rightNum;
-    while (file >> leftNum >> rightNum)
+    InputData data;
+
+    const auto file_size = std::filesystem::file_size(file_path);
+    constexpr size_t kAvgBytesPerLine = 10;
+    const size_t estimated_lines = file_size / kAvgBytesPerLine;
+
+    data.left_column.reserve(estimated_lines);
+    data.right_column.reserve(estimated_lines);
+
+    int left_number, right_number;
+    while (file >> left_number >> right_number)
     {
-        left.push_back(leftNum);
-        right.push_back(rightNum);
+        data.left_column.emplace_back(left_number);
+        data.right_column.emplace_back(right_number);
     }
 
-    file.close();
+    if (!file.eof())
+    {
+        throw std::runtime_error("Error reading file: " + file_path.string() +
+                                 " - invalid format at line " +
+                                 std::to_string(data.left_column.size() + 1));
+    }
+
+    data.left_column.shrink_to_fit();
+    data.right_column.shrink_to_fit();
+
+    return data;
 }
 
-void advent_of_code_2024_day1_part1()
+[[nodiscard]] long long advent_of_code_2024_day1_part1(const std::filesystem::path &file_path)
 {
-    vector<int> left, right;
+    auto data = read_input(file_path);
 
-    readInput("C:\\DATA\\Courses\\AdventOfCode\\2024\\Day1\\input.txt", left, right);
+    std::sort(data.left_column.begin(), data.left_column.end());
+    std::sort(data.right_column.begin(), data.right_column.end());
 
-    cout << "Wczytano " << left.size() << " par liczb" << endl;
-    cout << "Pierwsze 5 par:" << endl;
-    for (int i = 0; i < min(5, (int)left.size()); i++)
-    {
-        cout << left[i] << " " << right[i] << endl;
-    }
-
-    std::sort(left.begin(), left.end());
-    std::sort(right.begin(), right.end());
-
-    cout << "Pierwsze 5 par:" << endl;
-    for (int i = 0; i < min(5, (int)left.size()); i++)
-    {
-        cout << left[i] << " " << right[i] << endl;
-    }
-
-    cout << "left size - " << left.size() << " right size - " << right.size() << endl;
-
-    long long distance_sum = 0;
-    for (size_t i = 0; i < left.size(); i++)
-    {
-        distance_sum += abs(left[i] - right[i]);
-    }
-
-    cout << "Suma odległości: " << distance_sum << endl;
-}
-
-void advent_of_code_2024_day1_part2()
-{
-    vector<int> left, right;
-
-    readInput("C:\\DATA\\Courses\\AdventOfCode\\2024\\Day1\\input.txt", left, right);
-
-    // Tworzymy mapy z ilością wystąpień każdej liczby
-    map<int, int> left_count;
-    map<int, int> right_count;
-
-    for (int num : left)
-    {
-        left_count[num]++;
-    }
-
-    for (int num : right)
-    {
-        right_count[num]++;
-    }
-
-    // Wyświetlamy przykładowe wystąpienia
-    cout << "Przykładowe wystąpienia w lewej kolumnie:" << endl;
-    int count = 0;
-    for (auto &pair : left_count)
-    {
-        cout << "Liczba " << pair.first << " występuje " << pair.second << " razy" << endl;
-        if (++count >= 5)
-            break;
-    }
-
-    cout << "\nPrzykładowe wystąpienia w prawej kolumnie:" << endl;
-    count = 0;
-    for (auto &pair : right_count)
-    {
-        cout << "Liczba " << pair.first << " występuje " << pair.second << " razy" << endl;
-        if (++count >= 5)
-            break;
-    }
-
-    long long similarity_sum = 0;
-    for (auto &left_num : left)
-    {
-        if (right_count[left_num] > 0)
+    const long long distance_sum = std::transform_reduce(
+        data.left_column.cbegin(), data.left_column.cend(),
+        data.right_column.cbegin(),
+        0LL,
+        std::plus<>{},
+        [](const int left, const int right)
         {
-            similarity_sum += left_num * right_count[left_num];
+            return std::abs(left - right);
+        });
+
+    return distance_sum;
+}
+
+[[nodiscard]] long long advent_of_code_2024_day1_part2(const std::filesystem::path &file_path)
+{
+    const auto data = read_input(file_path);
+
+    std::unordered_map<int, int> right_column_count;
+    right_column_count.reserve(data.right_column.size());
+
+    for (const auto num : data.right_column)
+    {
+        ++right_column_count[num];
+    }
+
+    long long similarity_sum = 0LL;
+    for (const auto left_num : data.left_column)
+    {
+        if (const auto it = right_column_count.find(left_num); it != right_column_count.end())
+        {
+            similarity_sum += static_cast<long long>(left_num) * it->second;
         }
     }
 
-    cout << "Suma podobieństw: " << similarity_sum << endl;
+    return similarity_sum;
 }
 
 int main()
 {
-    advent_of_code_2024_day1_part1();
+    try
+    {
+        const std::filesystem::path example_file = "input_example.txt";
+        const std::filesystem::path input_file = "input.txt";
 
-    advent_of_code_2024_day1_part2();
+        std::cout << "=== input_example.txt ===" << std::endl;
+        std::cout << "=== Part 1 ===" << std::endl;
+        const auto result1_example = advent_of_code_2024_day1_part1(example_file);
+        std::cout << "Sum of distances: " << result1_example << std::endl;
+
+        std::cout << "=== Part 2 ===" << std::endl;
+        const auto result2_example = advent_of_code_2024_day1_part2(example_file);
+        std::cout << "Similarity score: " << result2_example << std::endl;
+
+        std::cout << std::endl;
+
+        std::cout << "=== input.txt ===" << std::endl;
+        std::cout << "=== Part 1 ===" << std::endl;
+        const auto result1 = advent_of_code_2024_day1_part1(input_file);
+        std::cout << "Sum of distances: " << result1 << std::endl;
+
+        std::cout << "=== Part 2 ===" << std::endl;
+        const auto result2 = advent_of_code_2024_day1_part2(input_file);
+        std::cout << "Similarity score: " << result2 << std::endl;
+    }
+    catch (const std::exception &e)
+    {
+        std::cerr << "Error: " << e.what() << std::endl;
+        return 1;
+    }
 
     return 0;
 }
